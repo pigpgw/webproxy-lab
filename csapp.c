@@ -951,36 +951,42 @@ int open_clientfd(char *hostname, char *port) {
     int clientfd, rc;
     struct addrinfo hints, *listp, *p;
 
-    /* Get a list of potential server addresses */
+    /* 잠재적인 서버 주소 목록을 얻기 위한 힌트 구조체 초기화 */
     memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_socktype = SOCK_STREAM;  /* Open a connection */
-    hints.ai_flags = AI_NUMERICSERV;  /* ... using a numeric port arg. */
-    hints.ai_flags |= AI_ADDRCONFIG;  /* Recommended for connections */
+    hints.ai_socktype = SOCK_STREAM;  /* TCP 연결 사용 */
+    hints.ai_flags = AI_NUMERICSERV;  /* 포트 번호를 숫자로 해석 */
+    hints.ai_flags |= AI_ADDRCONFIG;  /* 로컬 시스템 구성에 따른 주소 타입 반환 */
+
+    /* getaddrinfo를 호출하여 주소 정보 얻기 */
     if ((rc = getaddrinfo(hostname, port, &hints, &listp)) != 0) {
         fprintf(stderr, "getaddrinfo failed (%s:%s): %s\n", hostname, port, gai_strerror(rc));
         return -2;
     }
   
-    /* Walk the list for one that we can successfully connect to */
+    /* 연결 가능한 주소를 찾아 순회 */
     for (p = listp; p; p = p->ai_next) {
-        /* Create a socket descriptor */
+        /* 소켓 생성 */
         if ((clientfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) 
-            continue; /* Socket failed, try the next */
+            continue; /* 소켓 생성 실패, 다음 주소로 */
 
-        /* Connect to the server */
+        /* 서버에 연결 시도 */
         if (connect(clientfd, p->ai_addr, p->ai_addrlen) != -1) 
-            break; /* Success */
-        if (close(clientfd) < 0) { /* Connect failed, try another */  //line:netp:openclientfd:closefd
+            break; /* 연결 성공 */
+
+        /* 연결 실패 시 소켓 닫기 */
+        if (close(clientfd) < 0) {
             fprintf(stderr, "open_clientfd: close failed: %s\n", strerror(errno));
             return -1;
         } 
     } 
 
-    /* Clean up */
+    /* 메모리 해제 */
     freeaddrinfo(listp);
-    if (!p) /* All connects failed */
+
+    /* 연결 결과 반환 */
+    if (!p) /* 모든 연결 시도 실패 */
         return -1;
-    else    /* The last connect succeeded */
+    else    /* 마지막 연결 시도 성공 */
         return clientfd;
 }
 /* $end open_clientfd */
