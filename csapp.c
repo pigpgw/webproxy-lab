@@ -1000,7 +1000,49 @@ int open_clientfd(char *hostname, char *port) {
  *       -1 with errno set for other errors.
  */
 /* $begin open_listenfd */
-int open_listenfd(char *port) 
+int open_listenfd(char *port) {
+    struct addrinfo hints, *listp, *p;
+    int listenfd, optval=1;
+
+    // addrinfo 구조체 초기화
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_socktype = SOCK_STREAM;  // TCP 연결 사용
+    hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG | AI_NUMERICSERV;
+
+    // 서버 주소 정보 얻기
+    Getaddrinfo(NULL, port, &hints, &listp);
+
+    // 바인딩 가능한 주소 찾기
+    for (p = listp; p; p = p->ai_next) {
+        // 소켓 생성
+        if ((listenfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0)
+            continue;  // 실패 시 다음 주소로
+
+        // "Address already in use" 오류 방지
+        Setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval , sizeof(int));
+
+        // 주소에 바인딩
+        if (bind(listenfd, p->ai_addr, p->ai_addrlen) == 0)
+            break;  // 성공 시 루프 탈출
+        
+        Close(listenfd);  // 바인딩 실패 시 소켓 닫기
+    }
+
+    // 메모리 해제
+    Freeaddrinfo(listp);
+
+    // 바인딩 실패 시 오류 반환
+    if (!p)
+        return -1;
+
+    // 리스닝 소켓으로 변환
+    if (listen(listenfd, LISTENQ) < 0) {
+        Close(listenfd);
+        return -1;
+    }
+
+    return listenfd;
+}
 {
     struct addrinfo hints, *listp, *p;
     int listenfd, rc, optval=1;
