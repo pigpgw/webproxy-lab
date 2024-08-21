@@ -748,23 +748,29 @@ void V(sem_t *sem)
 /* $begin rio_readn */
 ssize_t rio_readn(int fd, void *usrbuf, size_t n) 
 {
+    // nleft 아직 읽어야 할 바이트 수
     size_t nleft = n;
     ssize_t nread;
     char *bufp = usrbuf;
 
+    // 모든 바이트를 읽을 때까지 반복
     while (nleft > 0) {
+    // 데이터 읽기
 	if ((nread = read(fd, bufp, nleft)) < 0) {
-	    if (errno == EINTR) /* Interrupted by sig handler return */
-		nread = 0;      /* and call read() again */
+	    if (errno == EINTR) // 시그널 핸들어에 의해 중단된 경우
+		nread = 0;      // nread를 0으로 설정하고 다시 읽기 시도
 	    else
-		return -1;      /* errno set by read() */ 
+		return -1;      // 다른 오류 발생 시 -1 반환
 	} 
 	else if (nread == 0)
-	    break;              /* EOF */
-	nleft -= nread;
-	bufp += nread;
+	    break;              /* EOF(파일의 끝)에 도달한 경우 루프 종류 */
+
+    // 읽은 바이트 수만큼 처리
+	nleft -= nread; // 남은 읽을 바이트 수 갱신
+	bufp += nread; // 버퍼 포인터 이동
     }
-    return (n - nleft);         /* Return >= 0 */
+    // 실제로 읽은 바이트 수를 반환
+    return (n - nleft);        // 0이상의 값 반환
 }
 /* $end rio_readn */
 
@@ -774,20 +780,25 @@ ssize_t rio_readn(int fd, void *usrbuf, size_t n)
 /* $begin rio_writen */
 ssize_t rio_writen(int fd, void *usrbuf, size_t n) 
 {
+    // nleft: 아직 쓰지 않은 바이트 수
     size_t nleft = n;
     ssize_t nwritten;
     char *bufp = usrbuf;
 
+    // 모든 바이트를 쓸 때까지 반복
     while (nleft > 0) {
-	if ((nwritten = write(fd, bufp, nleft)) <= 0) {
-	    if (errno == EINTR)  /* Interrupted by sig handler return */
-		nwritten = 0;    /* and call write() again */
-	    else
-		return -1;       /* errno set by write() */
-	}
-	nleft -= nwritten;
-	bufp += nwritten;
+        // write 함수로 데이터 쓰기 시도
+        if ((nwritten = write(fd, bufp, nleft)) <= 0) {
+            if (errno == EINTR)  /* 시그널 핸들러에 의해 중단된 경우 */
+                nwritten = 0;    /* nwritten을 0으로 설정하고 다시 쓰기 시도 */
+            else
+                return -1;       /* 다른 오류 발생 시 -1 반환 */
+        }
+        // 쓴 바이트 수만큼 처리
+        nleft -= nwritten;  // 남은 쓸 바이트 수 갱신
+        bufp += nwritten;   // 버퍼 포인터 이동
     }
+    // 쓰기 요청한 총 바이트 수 반환
     return n;
 }
 /* $end rio_writen */
