@@ -11,14 +11,13 @@ int main(void) {
 
     // 환경 변수에서 쿼리 스트링을 읽어옵니다.
     // 쿼리 스트링이 있으면 이를 처리합니다.
+    // 사용자가 폼을 제출하면 브라우저는 "/cgi-bin/adder?num1=값1&num2=값2" 형식의 URL을 생성
     if ((buf = getenv("QUERY_STRING")) != NULL) {
         // 쿼리 스트링에서 '&'를 찾아 두 인자를 분리합니다.
         p = strchr(buf, '&');
         *p = '\0';  // '&'를 널 문자로 바꿔 문자열을 분리합니다.
-        strcpy(arg1, buf);  // 첫 번째 인자를 복사합니다.
-        strcpy(arg2, p+1);  // 두 번째 인자를 복사합니다.
-        n1 = atoi(arg1);  // 문자열을 정수로 변환합니다.
-        n2 = atoi(arg2);
+        sscanf(buf, "num1=%d", &n1);
+        sscanf(p + 1, "num2=%d", &n2);
     }
 
     // 응답 본문을 만듭니다.

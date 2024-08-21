@@ -240,8 +240,6 @@ void serve_dynamic(int fd, char *filename, char *cgiargs) {
     Wait(NULL);
 }
 
-
-
 /* get_filetype - Derive file type from filename */
 void get_filetype(char *filename, char *filetype) {
     if (strstr(filename, ".html"))
