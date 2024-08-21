@@ -12,7 +12,7 @@
 void doit(int fd);
 void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char *filename, char *cgiargs);
-void serve_static(int fd, char *filename, int filesize);
+void serve_static(int fd, char *filename, int filesize, char *method);
 void get_filetype(char *filename, char *filetype);
 void serve_dynamic(int fd, char *filename, char *cgiargs);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
@@ -74,23 +74,22 @@ void doit(int fd)
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];  // HTTP 요청을 파싱하기 위한 버퍼들
     char filename[MAXLINE], cgiargs[MAXLINE];  // 요청된 파일 이름과 CGI 인자를 저장할 버퍼
     rio_t rio;  // Robust I/O (RIO) 패키지를 위한 구조체
-    printf("-------------%d---------------",fd);
     /* 요청 라인과 헤더 읽기 */
     Rio_readinitb(&rio, fd);  // rio 구조체 초기화. fd와 연결
     //한 개의 HTTP 트랜잭션을 처리함, 먼저 요청 라인을 읽음
     Rio_readlineb(&rio, buf, MAXLINE);  // 클라이언트로부터 한 줄(요청 라인) 읽기
-    printf("Request headers:\n");
-    printf("67876%s678678", buf);  // 요청 라인 출력
-    // sscanf를 사용하여 buf에서 구조화된 데이터를 추출
-    sscanf(buf, "%s %s %s", method, uri, version);  // 요청 라인을 method, uri, version으로 파싱
+    printf("Request line:\n%s", buf);
+    sscanf(buf, "%s %s %s", method, uri, version);
 
-    // GET 메소드가 아닌 경우 에러 처리
-    // strcasecmp 함수는 문자열을 비교하는 C 라이브러리 함수
-    if (strcasecmp(method, "GET")) {
-        clienterror(fd, method, "501", "Not implemented",
-                    "Tiny does not implement this method");
+    printf("Request headers:\n");  // 요청 라인을 method, uri, version으로 파싱
+
+    /* HTTP 요청의 메서드가 "GET"이 아닌 경우에 501 오류를 클라이언트에게 반환 */
+    /* Homework 11.11 "HEAD"가 아닌 경우 추가 */
+    if (strcasecmp(method, "GET") && strcasecmp(method, "HEAD")) {
+        clienterror(fd, method, "501", "Not implemented", "Tiny does not implement this method");
         return;
     }
+
     read_requesthdrs(&rio);  // 나머지 요청 헤더들을 읽고 무시 (이 서버에서는 사용하지 않음)
 
     /* GET 요청에서 URI 파싱 */
@@ -110,7 +109,7 @@ void doit(int fd)
                         "Tiny couldn't read the file");
             return;
         }
-        serve_static(fd, filename, sbuf.st_size);  // 정적 콘텐츠 제공
+        serve_static(fd, filename, sbuf.st_size, method);  // 정적 콘텐츠 제공
     }
     else { /* 동적 콘텐츠 제공 */
         // 일반 파일이 아니거나 실행 권한이 없는 경우
@@ -123,34 +122,43 @@ void doit(int fd)
     }
 }
 
-void serve_static(int fd, char *filename, int filesize) {
-    int srcfd;
-    char *srcp, filetype[MAXLINE], buf[MAXBUF];
+// method 체크를 위해 추가
+void serve_static(int fd, char *filename, int filesize, char *method)
+{
+  int srcfd;                // 파일 디스크립터
+  char *srcp,               // 파일 내용을 메모리에 매핑한 포인터
+       filetype[MAXLINE],   // 파일의 MIME 타입
+       buf[MAXBUF];         // 응답 헤더를 저장할 버퍼
 
-    /* 클라이언트에 응답 헤더 보내기 */
-    // 파일 타입을 결정합니다.
-    get_filetype(filename, filetype);
-    // HTTP 응답 헤더를 생성합니다.
-    sprintf(buf, "HTTP/1.0 200 OK\r\n");
-    sprintf(buf, "%s서버: Tiny 웹 서버\r\n", buf);
-    sprintf(buf, "%s연결: close\r\n", buf);
-    sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);
-    sprintf(buf, "%sContent-type: %s\r\n\r\n", buf, filetype);
-    // 응답 헤더를 클라이언트에 보냅니다.
-    Rio_writen(fd, buf, strlen(buf));
-    printf("응답 헤더:\n");
+  /* 응답 헤더 생성 및 전송 */
+  get_filetype(filename, filetype);                         // 파일 타입 결정
+  sprintf(buf, "HTTP/1.0 200 OK\r\n");                      // 응답 라인 작성
+  // 응답 헤더
+  sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);       // 서버 정보 추가
+  sprintf(buf, "%sConnections: close\r\n", buf);            // 연결 종료 정보 추가
+  sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);  // 컨텐츠 길이 추가
+  sprintf(buf, "%sContent-type: %s\r\n\r\n", buf, filetype); // 컨텐츠 타입 추가
 
-    /* 클라이언트에 응답 본문 보내기 */
-    // 요청된 파일을 엽니다.
-    srcfd = Open(filename, O_RDONLY, 0);
-    // 파일을 메모리에 매핑합니다.
-    srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-    // 파일 디스크립터를 닫습니다 (더 이상 필요 없음).
-    Close(srcfd);
-    // 파일 내용을 클라이언트에 전송합니다.
-    Rio_writen(fd, srcp, filesize);
-    // 매핑된 메모리 영역을 해제합니다.
-    Munmap(srcp, filesize);
+  /* 응답 라인과 헤더를 클라이언트에게 보냄 */
+  Rio_writen(fd, buf, strlen(buf)); 
+  printf("Response headers: \n");
+  printf("%s", buf);
+
+  if (strcasecmp(method, "HEAD") == 0)
+      return;
+
+  /* 응답 바디 전송 */
+  srcfd = Open(filename, O_RDONLY, 0);                       // 파일 열기
+  //srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0); // 파일을 메모리에 동적할당
+
+  /* Homework 11.9 */
+  srcp = (char *) malloc(filesize); // mmap 대신 malloc 사용
+  rio_readn(srcfd, srcp, filesize); // rio_readn 사용하기
+
+  Close(srcfd);                                             // 파일 닫기
+  Rio_writen(fd, srcp, filesize);                           // 클라이언트에게 파일 내용 전송
+  // Munmap(srcp, filesize);                                // 메모리 할당 해제
+  free(srcp);                                               // malloc 사용 => munmap에서 free로 변경  
 }
 
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg) 
@@ -182,6 +190,7 @@ void read_requesthdrs(rio_t *rp)
     char buf[MAXLINE];
 
     Rio_readlineb(rp, buf, MAXLINE);  // 첫 번째 헤더 라인을 읽음
+    printf("%s", buf);  // 첫 번째 헤더 라인 출력
     // 빈 라인(\r\n) 헤어듸 끝을 의미함
     while(strcmp(buf, "\r\n")) {  // 빈 라인(\r\n)을 만날 때까지 반복
         Rio_readlineb(rp, buf, MAXLINE);  // 다음 헤더 라인을 읽음
